@@ -1,0 +1,19 @@
+# Axis camera. Lock all of these before calibrating; changing any of them
+# invalidates the calibration. They are copied into every calibration result.
+name: axis-lab
+# Credentials are read from the AXIS_USER / AXIS_PASS environment variables.
+rtsp_url: rtsp://${AXIS_USER}:${AXIS_PASS}@localhost:38079/axis-media/media.amp?resolution=1920x1080&fps=25
+settings:
+  resolution: [1920, 1080]
+  fps: 25
+  stream_profile: calib
+  focus: fixed            # note the focus position if the camera reports it
+  zoom: fixed
+  eis: "off"               # electronic image stabilisation
+  dewarping: "off"
+  ir_cut: day             # day | night | auto (auto is not allowed for calibration)
+
+intrinsics:
+  model: rational          # pinhole | rational | fisheye
+  min_corners_per_view: 8 # skip views with fewer detected ChArUco corners
+  outlier_factor: 3.0     # drop views whose RMS > factor * median, then recalibrate

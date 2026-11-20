@@ -1,0 +1,12 @@
+# ChArUco board definition. Must match the printed board exactly.
+# Measure the printed square size with calipers and put the real value here.
+squares_x: 4            # number of chessboard squares along x 4 | 7
+squares_y: 3            # number of chessboard squares along y 3 | 5
+square_length_m: 0.2445  # side length of one chessboard square [m] 0.2445 | 0.0735
+marker_length_m: 0.1835  # side length of one ArUco marker [m] 0.1835 | 0.055
+dictionary: DICT_6X6_100
+# Set true for boards generated with OpenCV < 4.6 or some third-party generators
+# (marker in the top-left square instead of a black square).
+legacy_pattern: false
+
+

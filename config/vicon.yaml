@@ -1,0 +1,10 @@
+# Vicon DataStream (Tracker 3.10)
+host: clt-lab-t-5059.zhaw.ch:801
+sdk_dir: third_party/vicon_sdk   # libViconDataStreamSDK_C.so + _CPP.so (not in git)
+stream_mode: ServerPush          # ClientPull | ClientPullPreFetch | ServerPush
+
+subjects:
+  board: charuco_board           # Vicon object name of the ChArUco board, as in Tracker
+  car: athena                    # Vicon object name of the RC car
+
+world_up_axis: z                 # Vicon world axis pointing up
