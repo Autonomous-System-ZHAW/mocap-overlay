@@ -17,17 +17,18 @@ N_FRAMES, FPS, SIZE = 40, 25, (320, 240)
 
 @pytest.fixture(scope="module")
 def video_file(tmp_path_factory):
-    """Frame i is uniformly gray with value 5 * i, so frames can be identified after decoding."""
+    """Frame i is uniformly gray with value 20 + 5 * i, so frames can be identified after decoding
+    (starting at 20: H.264 shifts near-black flat frames by a few levels)."""
     path = tmp_path_factory.mktemp("video") / "cam.avi"
     w = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), FPS, SIZE)
     for i in range(N_FRAMES):
-        w.write(np.full((SIZE[1], SIZE[0], 3), 5 * i, np.uint8))
+        w.write(np.full((SIZE[1], SIZE[0], 3), 20 + 5 * i, np.uint8))
     w.release()
     return str(path)
 
 
 def gray(img) -> int:
-    return round(float(img.mean()) / 5)
+    return round((float(img.mean()) - 20) / 5)
 
 
 def test_camera_stream_delivers_every_frame_in_real_time(video_file):
@@ -88,9 +89,8 @@ def test_recorder_round_trip(video_file, tmp_path):
     camera = CameraStream({"rtsp_url": ""}, video_file)
     vicon = FakeVicon()
     rec = Recorder(tmp_path / "rec", camera, vicon, fps=FPS, meta={"note": "test"})
+    rec.start()  # before the camera starts, so every frame is recorded (no race with the first frames)
     with camera:
-        assert camera.read(timeout=5) is not None
-        rec.start()
         t0 = time.time()
         # Car drives along x at 1 m/s and turns at 90 deg/s, 100 Hz; occluded for samples 20-24.
         for k in range(100):
@@ -102,15 +102,17 @@ def test_recorder_round_trip(video_file, tmp_path):
     rec.stop()
     assert rec.state == RecState.DONE, rec.error
     stats = rec.stats()
-    assert stats["vicon_samples"] == 100 and stats["frames"] >= N_FRAMES - 3 and stats["frames_dropped"] == 0
+    assert stats["vicon_samples"] == 100 and stats["frames"] == N_FRAMES and stats["frames_dropped"] == 0
 
     r = Recording(tmp_path / "rec")
     assert r.meta["note"] == "test" and r.meta["stats"]["frames"] == stats["frames"]
     assert len(r.frames) == stats["frames"]
     decoded = list(r.iter_frames())
     assert len(decoded) == len(r.frames)
-    first_gray = gray(decoded[0][2])  # recording may start a frame or two into the file
-    assert [gray(img) for _, _, img in decoded] == list(range(first_gray, first_gray + len(decoded)))
+    # Every frame once and in order: consecutive frames differ by one gray step (5 levels).
+    # Absolute values are not checked: the encoder shifts flat frames by a few levels.
+    steps = np.diff([float(img.mean()) for _, _, img in decoded])
+    assert np.all(np.abs(steps - 5) < 2.5), steps
 
     T, ok = r.pose_at("car", [t0 + 0.105, t0 + 0.22, t0 + 0.505])
     assert ok.tolist() == [True, False, True]  # middle one falls into the occlusion

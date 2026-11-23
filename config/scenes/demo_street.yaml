@@ -1,0 +1,72 @@
+# First demo scene: a short street with cones and obstacles on the lab floor, plus a model
+# following the car. Units: metres, degrees. z = 0 is the floor (Vicon world).
+#
+# Virtual objects are always drawn in front of untracked real objects (people, tables), so
+# place the scene on free floor. `origin` moves the whole street; (-0.35, -1.75) is the free
+# floor in the middle of the camera image.
+name: demo street
+origin: {xyz: [-0.35, -1.75, 0.0], rpy_deg: [0, 0, 0]}
+
+objects:
+  # --- street along the origin's x axis ------------------------------------------------------
+  - name: road
+    mesh: {type: plane, size: [2.6, 0.7]}
+    pose: {xyz: [0.0, 0.0, 0.002]}
+    color: "#2b2b2e"
+    opacity: 0.85
+  - name: lane_dash
+    mesh: {type: plane, size: [0.22, 0.035]}
+    pose: {xyz: [-1.1, 0.0, 0.004]}
+    repeat: {count: 6, step: [0.44, 0, 0]}
+    color: "#f2f2f2"
+  - name: edge_left
+    mesh: {type: plane, size: [2.6, 0.025]}
+    pose: {xyz: [0.0, 0.33, 0.004]}
+    color: "#f2f2f2"
+  - name: edge_right
+    mesh: {type: plane, size: [2.6, 0.025]}
+    pose: {xyz: [0.0, -0.33, 0.004]}
+    color: "#f2f2f2"
+
+  # --- cones along both sides, obstacles on the road -------------------------------------------
+  - name: cone_left
+    mesh: {type: traffic_cone, radius: 0.05, height: 0.18}
+    pose: {xyz: [-1.2, 0.45, 0.0]}
+    repeat: {count: 4, step: [0.8, 0, 0]}
+    color: "#ff7a00"
+    shadow: true
+  - name: cone_right
+    mesh: {type: traffic_cone, radius: 0.05, height: 0.18}
+    pose: {xyz: [-0.8, -0.45, 0.0]}
+    repeat: {count: 3, step: [0.8, 0, 0]}
+    color: "#ff7a00"
+    shadow: true
+  - name: obstacle_1
+    mesh: {type: box, size: [0.25, 0.18, 0.18]}
+    pose: {xyz: [-0.4, 0.13, 0.0], rpy_deg: [0, 0, 20]}
+    color: "#c0392b"
+    shadow: true
+  - name: obstacle_2
+    mesh: {type: cylinder, radius: 0.08, height: 0.25}
+    pose: {xyz: [0.6, -0.13, 0.0]}
+    color: "#8e44ad"
+    shadow: true
+
+  # --- model following the car (subject frame: rear axle centre, x forward) ---------------------
+  - name: car_body
+    attach: athena
+    mesh: {type: box, size: [0.48, 0.24, 0.14]}
+    pose: {xyz: [0.14, 0.0, -0.03]}
+    color: "#2f7bff"
+    opacity: 0.45
+  - name: car_arrow
+    attach: athena
+    mesh: {type: cone, radius: 0.05, height: 0.16}
+    pose: {xyz: [0.25, 0.0, 0.16], rpy_deg: [0, 90, 0]}   # tip points along the car's x axis
+    color: "#ffd400"
+
+trails:
+  - subject: athena
+    seconds: 4.0
+    color: "#00e5ff"
+    width: 4

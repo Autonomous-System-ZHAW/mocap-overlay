@@ -1,7 +1,7 @@
 # mocap-overlay
 
 Calibrate the lab Axis camera to the Vicon system and overlay Vicon data on the video.
-See [CLAUDE.md](CLAUDE.md) for the full plan and conventions.
+See [CLAUDE.md](CLAUDE.md) for the full plan and conventions, [docs/future_improvements.md](docs/future_improvements.md) for open ideas.
 
 ## Setup
 
@@ -74,3 +74,20 @@ uv run python scripts/estimate_time_offset.py            # newest recording with
 machine) was exposed at `t - delay_s`. Also writes `time_sync_check.jpg` into the recording
 (red: corners predicted without the correction, green: with). Re-measure whenever the network
 path, stream profile or the machine changes.
+
+## Overlays
+
+**Live check** (`scripts/check_extrinsics.py`) applies the measured camera delay: each frame is
+drawn with the Vicon data from its exposure time. Press D to toggle the correction.
+
+**Offline render** of a scene onto a recording:
+```bash
+uv run python scripts/render_offline.py data/recordings/<ts> --scene config/scenes/demo_street.yaml
+```
+→ `data/renders/<recording>_<scene>.mp4`. Scenes are YAML (`config/scenes/`): static objects in the
+Vicon world (moved together with `origin`), objects attached to Vicon subjects, holdouts and
+trails. Rendering is OpenGL offscreen (EGL, no window needed) with a virtual pinhole camera
+remapped onto the real lens distortion (`overlay/gl_renderer.py`).
+
+Virtual objects are always drawn over untracked real objects (people, furniture); only Vicon
+subjects can hide them (holdouts). Place scenes on free floor.

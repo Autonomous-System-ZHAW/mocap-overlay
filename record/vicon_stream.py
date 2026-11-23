@@ -6,6 +6,7 @@ Every frame is stored with a host timestamp (receive time minus the SDK's report
 latency, i.e. an estimate of the Vicon exposure time on the host clock).
 """
 
+import bisect
 import threading
 import time
 from collections import deque
@@ -14,6 +15,7 @@ from enum import Enum
 
 import numpy as np
 
+from calib.transforms import interpolate_pose
 from record.subscription import Subscription
 from record.vicon_client import ViconClient, ViconError
 
@@ -75,6 +77,33 @@ class ViconStream:
     def window(self, t_from: float, t_to: float) -> list[ViconSample]:
         with self._lock:
             return [s for s in self.buffer if t_from <= s.t_host <= t_to]
+
+    def nearest(self, t: float) -> ViconSample | None:
+        """Buffered sample closest to host time t (e.g. a delayed camera frame time)."""
+        with self._lock:
+            buf = list(self.buffer)
+        if not buf:
+            return None
+        i = bisect.bisect_left([s.t_host for s in buf], t)
+        cands = buf[max(0, i - 1): i + 1]
+        return min(cands, key=lambda s: abs(s.t_host - t))
+
+    def pose_at(self, subject: str, t: float, max_gap_s: float = 0.05) -> np.ndarray | None:
+        """T_world_subject interpolated at host time t from the buffer; None if not available
+        (outside the buffer, occluded around t, or a gap longer than max_gap_s)."""
+        with self._lock:
+            buf = list(self.buffer)
+        times = [s.t_host for s in buf]
+        i = bisect.bisect_left(times, t)
+        if i == len(buf) and buf and t - times[-1] <= max_gap_s:
+            return buf[-1].poses.get(subject)  # slightly newer than the newest sample: hold it
+        if i == 0 or i == len(buf):
+            return None
+        s0, s1 = buf[i - 1], buf[i]
+        T0, T1 = s0.poses.get(subject), s1.poses.get(subject)
+        if T0 is None or T1 is None or s1.t_host - s0.t_host > max_gap_s:
+            return None
+        return interpolate_pose(T0, T1, (t - s0.t_host) / (s1.t_host - s0.t_host))
 
     def subscribe(self, maxsize: int = 5000) -> Subscription:
         """Queue with every sample, e.g. for recording."""

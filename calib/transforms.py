@@ -50,3 +50,11 @@ def average_poses(Ts: list[np.ndarray]) -> tuple[np.ndarray, float, float]:
     t_std = float(np.linalg.norm(t.std(axis=0)))
     r_dev = max(rotation_angle_deg(R.T @ Ri) for Ri in Ts[:, :3, :3])
     return make_T(R, t.mean(axis=0)), t_std, r_dev
+
+
+def interpolate_pose(T0: np.ndarray, T1: np.ndarray, w: float) -> np.ndarray:
+    """Pose between T0 (w=0) and T1 (w=1): linear translation, spherical rotation."""
+    R_rel = T0[:3, :3].T @ T1[:3, :3]
+    rvec = cv2.Rodrigues(R_rel)[0].ravel()
+    R = T0[:3, :3] @ cv2.Rodrigues(rvec * w)[0]
+    return make_T(R, (1 - w) * T0[:3, 3] + w * T1[:3, 3])

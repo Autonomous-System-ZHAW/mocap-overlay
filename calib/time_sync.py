@@ -147,3 +147,19 @@ def estimate(problem: Problem, timebase: str, delay_range=(-0.5, 2.0), readout_r
         rms_px_no_delay=float(np.sqrt(np.mean(np.minimum(e0[both], 1e3) ** 2))),
         inlier_ratio=float(inl.mean()), curve=(xs, ys), windows=windows,
     )
+
+
+def load_delay(path=None) -> tuple[float, float, str | None]:
+    """(delay_s, readout_s, file) from a time sync result; newest in data/time_sync by default.
+    Returns zeros and None if nothing has been measured yet."""
+    from pathlib import Path
+
+    from calib.io import load_yaml
+
+    if path is None:
+        files = sorted(Path("data/time_sync").glob("time_sync_*.yaml"))
+        if not files:
+            return 0.0, 0.0, None
+        path = files[-1]
+    d = load_yaml(path)
+    return float(d["delay_s"]), float(d.get("readout_s", 0.0)), str(path)
