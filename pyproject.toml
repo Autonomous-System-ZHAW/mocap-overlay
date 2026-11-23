@@ -7,8 +7,10 @@ dependencies = [
     "moderngl>=5.13.0",
     "numpy>=1.26",
     "opencv-contrib-python>=4.10",
+    "pillow>=13.0.0",
     "pyyaml>=6.0",
     "scipy>=1.17.1",
+    "trimesh>=5.2.2",
 ]
 
 [dependency-groups]

@@ -186,3 +186,62 @@ def test_virtual_camera_maps_are_inverse(model, dist):
     bx = cv2.remap(ux, vx[:, None], vy[:, None], cv2.INTER_LINEAR).ravel()
     by = cv2.remap(uy, vx[:, None], vy[:, None], cv2.INTER_LINEAR).ravel()
     assert np.abs(np.column_stack([bx, by]) - pts).max() < 0.1
+
+
+def _write_glb(path, vertices_zup, faces, color_rgba_u8, texture=None, uv=None):
+    """Write a glb like Blender does: Y-up (Blender x, y, z -> glTF x, z, -y)."""
+    import trimesh
+    from PIL import Image
+
+    v = np.asarray(vertices_zup, float)
+    v_yup = np.column_stack([v[:, 0], v[:, 2], -v[:, 1]])
+    if texture is not None:
+        mat = trimesh.visual.material.PBRMaterial(baseColorFactor=color_rgba_u8,
+                                                  baseColorTexture=Image.fromarray(texture))
+        visual = trimesh.visual.TextureVisuals(uv=uv, material=mat)
+    else:
+        visual = trimesh.visual.TextureVisuals(material=trimesh.visual.material.PBRMaterial(
+            baseColorFactor=color_rgba_u8))
+    trimesh.Trimesh(v_yup, faces, visual=visual, process=False).export(path)
+
+
+def test_load_gltf_converts_axes_colours_and_textures(tmp_path):
+    from overlay.meshes import load_gltf
+
+    quad = [[0, 0, 0], [1, 0, 0], [1, 2, 0], [0, 2, 0]]  # 1 x 2 m in the z = 0 plane
+    tex = np.zeros((4, 4, 4), np.uint8)
+    tex[:2] = [255, 0, 0, 255]  # top half red
+    tex[2:] = [0, 255, 0, 255]  # bottom half green
+    _write_glb(tmp_path / "q.glb", quad, [[0, 1, 2], [0, 2, 3]], [255, 255, 255, 255], tex,
+               uv=np.array([[0, 0], [1, 0], [1, 1], [0, 1]], float))
+    _write_glb(tmp_path / "c.glb", quad, [[0, 1, 2], [0, 2, 3]], [255, 51, 0, 255])
+
+    (part,) = load_gltf(tmp_path / "q.glb")
+    np.testing.assert_allclose(part.mesh.vertices.min(axis=0), [0, 0, 0], atol=1e-6)
+    np.testing.assert_allclose(part.mesh.vertices.max(axis=0), [1, 2, 0], atol=1e-6)  # back to z-up
+    assert part.texture is not None and part.texture.shape == (4, 4, 4) and part.mesh.uvs is not None
+    (part,) = load_gltf(tmp_path / "c.glb")
+    assert part.texture is None
+    np.testing.assert_allclose(part.color, (1.0, 0.484, 0.0, 1.0), atol=0.01)  # linear 0.2 -> sRGB 0.48
+
+
+def test_gltf_scene_renders_texture_upright(gl, tmp_path):
+    """Texture top (red) must appear at the far end of the quad (v = 1, +y), as in Blender."""
+    quad = [[-0.5, 0, 0], [0.5, 0, 0], [0.5, 1, 0], [-0.5, 1, 0]]
+    tex = np.zeros((4, 4, 4), np.uint8)
+    tex[:2] = [255, 0, 0, 255]
+    tex[2:] = [0, 255, 0, 255]
+    _write_glb(tmp_path / "q.glb", quad, [[0, 1, 2], [0, 2, 3]], [255, 255, 255, 255], tex,
+               uv=np.array([[0, 0], [1, 0], [1, 1], [0, 1]], float))
+    (tmp_path / "s.yaml").write_text(f"objects: [{{mesh: {{type: gltf, file: {tmp_path / 'q.glb'}}}}}]\n")
+    cam = Camera("pinhole", SIZE, K, np.zeros(5), look_at(np.array([0.0, -2.0, 2.0]), np.array([0.0, 0.5, 0.0])))
+    r = gl.GLRenderer(cam, samples=1)
+    try:
+        items, _ = Scene.from_yaml(tmp_path / "s.yaml").draw_items({})
+        img = r.render(items)
+    finally:
+        r.release()
+    red = (img[..., 0] > 100) & (img[..., 1] < 50)
+    green = (img[..., 1] > 100) & (img[..., 0] < 50)
+    assert red.sum() > 200 and green.sum() > 200
+    assert np.nonzero(red)[0].mean() < np.nonzero(green)[0].mean()  # red is further away: higher in the image

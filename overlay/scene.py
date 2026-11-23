@@ -10,6 +10,8 @@ subjects, holdouts (invisible stand-ins for real objects) and trajectory trails.
         opacity: 1.0
         shadow: true
         repeat: {count: 5, step: [0.5, 0, 0]}                 # optional copies along a step
+      - name: street
+        mesh: {type: gltf, file: assets/demo/world.glb}       # Blender export (scripts/blender_export.py)
       - name: car_body
         attach: athena                                       # follows this Vicon subject
         mesh: {type: box, size: [0.45, 0.22, 0.12]}
@@ -36,7 +38,7 @@ from scipy.spatial.transform import Rotation
 
 from calib.transforms import make_T
 from overlay.gl_renderer import DrawItem
-from overlay.meshes import Mesh, from_spec
+from overlay.meshes import Part, from_spec, load_gltf
 
 
 def hex_to_rgb(color: str) -> tuple[float, float, float]:
@@ -53,9 +55,10 @@ def pose_from_spec(spec: dict | None) -> np.ndarray:
 @dataclass
 class SceneObject:
     name: str
-    mesh: Mesh
+    parts: list[Part]  # meshes with their own material colour / texture (glTF) or none (primitives)
     T: np.ndarray  # world pose (static) or offset in the subject frame (attached)
-    color: tuple[float, float, float, float]
+    color: tuple[float, float, float] | None  # YAML colour: overrides the material colours
+    opacity: float = 1.0
     attach: str | None = None
     shadow: bool = False
 
@@ -112,15 +115,30 @@ class Scene:
                     T = poses[o.attach] @ o.T
                 else:
                     continue
-                out.append(DrawItem(o.mesh, T, o.color, o.shadow))
+                for part in o.parts:
+                    rgb = o.color or (part.color[:3] if part.color else (1.0, 1.0, 1.0))
+                    alpha = (part.color[3] if part.color else 1.0) * o.opacity
+                    texture = None if o.color else part.texture
+                    out.append(DrawItem(part.mesh, T, (*rgb, alpha), o.shadow, texture=texture))
             return out
         return resolve(self.objects), resolve(self.holdouts)
 
 
+_GLTF_CACHE: dict[tuple[str, str], list[Part]] = {}
+
+
+def _parts(spec: dict) -> list[Part]:
+    if spec["type"] == "gltf":
+        key = (str(Path(spec["file"]).resolve()), spec.get("up", "y"))
+        if key not in _GLTF_CACHE:  # load each file once, also when repeated
+            _GLTF_CACHE[key] = load_gltf(spec["file"], spec.get("up", "y"))
+        return _GLTF_CACHE[key]
+    return [Part(from_spec(spec))]
+
+
 def _expand(o: dict) -> list[SceneObject]:
-    mesh = from_spec(o["mesh"])
-    rgb = hex_to_rgb(o.get("color", "#ffffff"))
-    color = (*rgb, float(o.get("opacity", 1.0)))
+    parts = _parts(o["mesh"])
+    color = hex_to_rgb(o["color"]) if "color" in o else (None if o["mesh"]["type"] == "gltf" else (1.0, 1.0, 1.0))
     base = pose_from_spec(o.get("pose"))
     rep = o.get("repeat", {"count": 1, "step": [0, 0, 0]})
     out = []
@@ -128,5 +146,6 @@ def _expand(o: dict) -> list[SceneObject]:
         T = base.copy()
         T[:3, 3] += k * np.asarray(rep["step"], float)
         name = o.get("name", "object") + (f"_{k}" if rep["count"] > 1 else "")
-        out.append(SceneObject(name, mesh, T, color, o.get("attach"), bool(o.get("shadow", False))))
+        out.append(SceneObject(name, parts, T, color, float(o.get("opacity", 1.0)), o.get("attach"),
+                               bool(o.get("shadow", False))))
     return out

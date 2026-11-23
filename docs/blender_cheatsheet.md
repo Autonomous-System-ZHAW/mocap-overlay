@@ -17,6 +17,7 @@ First run builds `data/blender/<recording>/mocap_scene.blend`, later runs just o
 | Empties `athena`, ... | Vicon objects, animated from the recording |
 | `floor_shadow_catcher` | catches shadows on the real floor |
 | Collection **models** | put your objects here |
+| Collection **holdouts** (in models) | invisible stand-ins for real objects |
 
 Frame 1 = first video frame. Units: metres, z up, floor at z = 0.
 
@@ -37,6 +38,10 @@ Frame 1 = first video frame. Units: metres, z up, floor at z = 0.
 
 While Vicon loses the object, the Empty is scaled to 0, so the attached object disappears.
 
+### Hide virtual objects behind a real one (holdout)
+Put a simple stand-in (e.g. a box the size of the real car, parented to `athena`) into the
+**holdouts** collection. It is invisible but hides everything virtual behind it.
+
 ## Render
 
 | Want | How |
@@ -47,6 +52,21 @@ While Vicon loses the object, the Empty is scaled to 0, so the attached object d
 | From the terminal | `blender -b mocap_scene.blend -S output -a` |
 
 Output: `data/blender/<recording>/render/`. Change format in Output Properties (e.g. FFmpeg video).
+
+## Export for the live view / offline renderer
+
+Save (Ctrl+S), then in the terminal:
+```bash
+uv run python scripts/blender_export.py data/blender/<recording> --name my_street
+uv run python scripts/live_overlay.py --scene config/scenes/my_street.yaml
+```
+→ `assets/my_street/*.glb` + `config/scenes/my_street.yaml`. Re-run after every change.
+
+| Exported | Not exported |
+|---|---|
+| mesh objects in **models** (with modifiers applied) | curves / text: convert to mesh first (Object → Convert → Mesh) |
+| base colour, image texture, transparency | shader node effects, emission, glass |
+| static + parented objects, holdouts | objects hidden in render, your own animations |
 
 ## Light and shadows
 - Changed the sun or the world light (EEVEE)? Text editor → `calibrate_shadow_catcher.py` → Run Script.

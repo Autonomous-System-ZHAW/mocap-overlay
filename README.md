@@ -120,3 +120,10 @@ real lens distortion (Map UV) and puts the CG over the original video at 1920x10
 node off = CG only with transparent background. `blender -b mocap_scene.blend -S output -a`.
 EEVEE by default; after changing the light, run the text block `calibrate_shadow_catcher.py`.
 Details: the `README_mocap` text block inside the .blend.
+
+Export the models for the live view and the offline renderer (save the .blend first):
+```bash
+uv run python scripts/blender_export.py data/blender/<recording> --name my_street
+```
+→ `assets/my_street/` (`world.glb` static, `<subject>.glb` per Vicon object, `holdouts_*.glb`) and
+`config/scenes/my_street.yaml`. Supported: meshes, base colour, image textures, transparency.

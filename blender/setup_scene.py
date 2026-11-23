@@ -9,7 +9,8 @@ Creates:
     Blender frame 1 = video frame 0), Vicon origin, sun, floor shadow catcher
   - collection "models": empty, for your own objects. Static objects: model in the Vicon
     world. Moving objects: parent them to a subject Empty (it is scaled to 0 while the
-    subject is not tracked, which hides its children)
+    subject is not tracked, which hides its children). Sub-collection "holdouts" (holdout on):
+    stand-ins for real objects that hide virtual objects behind them
   - scene "output" (1920x1080, the real camera image): its compositor takes the render of
     scene "mocap", applies the real lens distortion (Map UV) and puts it over the original
     camera video. Render this scene for the final images / video.
@@ -346,6 +347,11 @@ Collections
   models             your objects. Static: model in place (Vicon world, metres, z up).
                      Moving with a Vicon subject: parent to the subject Empty
                      (subject frame, e.g. car: origin rear axle centre, x forward).
+    holdouts         stand-ins for real objects (e.g. a box the size of the real car, parented
+                     to its Empty): invisible, but they hide virtual objects behind them.
+
+Export for the live view / offline renderer (save first):
+  uv run python scripts/blender_export.py data/blender/<recording> --name <scene name>
 
 Scenes
   mocap   where you work. Camera view (Numpad 0) shows the camera video undistorted: the Blender
@@ -377,6 +383,10 @@ def main():
     models = bpy.data.collections.new(MODELS)
     scene.collection.children.link(gen)
     scene.collection.children.link(models)
+    # Stand-ins for real objects (e.g. the real car): invisible, but hide what is behind them.
+    holdouts = bpy.data.collections.new("holdouts")
+    models.children.link(holdouts)
+    scene.view_layers[0].layer_collection.children[MODELS].children["holdouts"].holdout = True
 
     setup_engine(scene, cfg)
     add_camera(scene, cfg, gen, base)

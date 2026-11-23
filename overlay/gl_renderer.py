@@ -26,12 +26,15 @@ uniform mat4 mvp;
 uniform mat4 model;
 in vec3 in_pos;
 in vec3 in_normal;
+in vec2 in_uv;
 out vec3 v_normal;
 out vec3 v_world;
+out vec2 v_uv;
 void main() {
     vec4 world = model * vec4(in_pos, 1.0);
     v_world = world.xyz;
     v_normal = mat3(model) * in_normal;
+    v_uv = in_uv;
     gl_Position = mvp * vec4(in_pos, 1.0);
 }
 """
@@ -43,18 +46,22 @@ uniform vec3 light_dir;    // world, towards the light
 uniform vec3 cam_pos;      // world
 uniform float ambient;
 uniform bool shade;
+uniform bool use_texture;
+uniform sampler2D tex;
 in vec3 v_normal;
 in vec3 v_world;
+in vec2 v_uv;
 out vec4 f_color;
 void main() {
-    vec3 rgb = color.rgb;
+    vec4 base = use_texture ? color * texture(tex, v_uv) : color;
+    vec3 rgb = base.rgb;
     if (shade) {
         vec3 n = normalize(v_normal);
         if (dot(n, cam_pos - v_world) < 0.0) n = -n;   // face the camera, independent of winding
         float diffuse = max(dot(n, normalize(light_dir)), 0.0);
         rgb *= ambient + (1.0 - ambient) * diffuse;
     }
-    f_color = vec4(rgb * color.a, color.a);            // premultiplied
+    f_color = vec4(rgb * base.a, base.a);              // premultiplied
 }
 """
 
@@ -66,6 +73,7 @@ class DrawItem:
     color: tuple[float, float, float, float]  # straight RGBA, 0..1
     shadow: bool = False  # cast a planar shadow onto the floor (z = 0)
     shade: bool = True
+    texture: np.ndarray | None = None  # (H, W, 4) uint8 RGBA, row 0 = image top; needs mesh.uvs
 
 
 def projection_from_K(K: np.ndarray, size: tuple[int, int], near: float, far: float) -> np.ndarray:
@@ -111,16 +119,34 @@ class GLRenderer:
         self.fbo = self.ctx.framebuffer(color_attachments=[self.ctx.renderbuffer(vs, 4)])
         self.P = projection_from_K(self.K_virtual, vs, near, far)
         self._vaos: dict[int, moderngl.VertexArray] = {}
+        self._textures: dict[int, moderngl.Texture] = {}
 
     def _vao(self, mesh: Mesh) -> moderngl.VertexArray:
         key = id(mesh)
         if key not in self._vaos:
-            data = np.hstack([mesh.vertices, mesh.normals]).astype("f4")
+            uvs = mesh.uvs if mesh.uvs is not None else np.zeros((len(mesh.vertices), 2), np.float32)
+            data = np.hstack([mesh.vertices, mesh.normals, uvs]).astype("f4")
             vbo = self.ctx.buffer(data.tobytes())
-            self._vaos[key] = self.ctx.vertex_array(self.prog, [(vbo, "3f 3f", "in_pos", "in_normal")])
+            self._vaos[key] = self.ctx.vertex_array(self.prog, [(vbo, "3f 3f 2f", "in_pos", "in_normal", "in_uv")])
         return self._vaos[key]
 
-    def _draw(self, mesh: Mesh, T: np.ndarray, color, shade: bool) -> None:
+    def _texture(self, img: np.ndarray) -> moderngl.Texture:
+        key = id(img)
+        if key not in self._textures:
+            # OpenGL texture rows start at the bottom (v = 0), images at the top.
+            tex = self.ctx.texture((img.shape[1], img.shape[0]), 4, np.ascontiguousarray(np.flipud(img)).tobytes())
+            tex.build_mipmaps()
+            tex.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
+            tex.repeat_x = tex.repeat_y = True
+            self._textures[key] = tex
+        return self._textures[key]
+
+    def _draw(self, mesh: Mesh, T: np.ndarray, color, shade: bool, texture: np.ndarray | None = None) -> None:
+        use_tex = texture is not None and mesh.uvs is not None
+        self.prog["use_texture"].value = use_tex
+        if use_tex:
+            self._texture(texture).use(location=0)
+            self.prog["tex"].value = 0
         mvp = self.P @ self.cam.T_cam_world @ T
         self.prog["mvp"].write(mvp.T.astype("f4").tobytes())  # GL is column-major
         self.prog["model"].write(T.T.astype("f4").tobytes())
@@ -151,7 +177,7 @@ class GLRenderer:
         opaque = [it for it in items if it.color[3] >= 0.999]
         transparent = [it for it in items if it.color[3] < 0.999]
         for it in opaque:
-            self._draw(it.mesh, it.T_world_obj, it.color, it.shade)
+            self._draw(it.mesh, it.T_world_obj, it.color, it.shade, it.texture)
         ctx.enable(moderngl.BLEND)
         ctx.depth_mask = False
         S = shadow_matrix(self.light_dir)
@@ -161,7 +187,7 @@ class GLRenderer:
         cam_pos = self.cam.T_world_cam[:3, 3]
         transparent.sort(key=lambda it: -np.linalg.norm(it.T_world_obj[:3, 3] - cam_pos))
         for it in transparent:
-            self._draw(it.mesh, it.T_world_obj, it.color, it.shade)
+            self._draw(it.mesh, it.T_world_obj, it.color, it.shade, it.texture)
         ctx.depth_mask = True
 
         ctx.copy_framebuffer(self.fbo, self.fbo_ms)  # resolve multisampling
@@ -173,6 +199,8 @@ class GLRenderer:
     def release(self) -> None:
         for vao in self._vaos.values():
             vao.release()
+        for tex in self._textures.values():
+            tex.release()
         self.ctx.release()
 
 

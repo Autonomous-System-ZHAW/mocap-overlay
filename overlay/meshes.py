@@ -7,8 +7,9 @@ import numpy as np
 
 @dataclass
 class Mesh:
-    vertices: np.ndarray  # (N, 3) float32, object frame [m]
+    vertices: np.ndarray  # (N, 3) float32, object frame [m], 3 consecutive vertices per triangle
     normals: np.ndarray  # (N, 3) float32
+    uvs: np.ndarray | None = None  # (N, 2) float32 texture coordinates (v = 0 at the image bottom)
 
     @staticmethod
     def from_triangles(tris: np.ndarray) -> "Mesh":
@@ -67,6 +68,65 @@ def merge(meshes: list[Mesh]) -> Mesh:
 
 def translated(mesh: Mesh, offset) -> Mesh:
     return Mesh(mesh.vertices + np.asarray(offset, np.float32), mesh.normals)
+
+
+@dataclass
+class Part:
+    """One drawable piece of a model: mesh + material."""
+
+    mesh: Mesh
+    color: tuple[float, float, float, float] | None = None  # display RGBA; None = use the scene colour
+    texture: np.ndarray | None = None  # (H, W, 4) uint8 RGBA, row 0 = image top
+
+
+def _srgb(linear: np.ndarray) -> np.ndarray:
+    """Linear (glTF / Blender material values) -> display sRGB, so colours look like in Blender."""
+    linear = np.clip(linear, 0.0, 1.0)
+    return np.where(linear <= 0.0031308, 12.92 * linear, 1.055 * np.power(linear, 1 / 2.4) - 0.055)
+
+
+# glTF is Y-up: Blender (x, y, z) is stored as (x, z, -y). Back to Z-up (Vicon / Blender):
+Y_UP_TO_Z_UP = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], np.float32)
+
+
+def load_gltf(path, up: str = "y") -> list[Part]:
+    """Meshes of a .glb/.gltf file with base colour and base colour texture (no other PBR terms)."""
+    import trimesh  # only needed for glTF models
+
+    scene = trimesh.load(path, force="scene", process=False)  # keep authored (flat/smooth) normals
+    R = Y_UP_TO_Z_UP if up == "y" else np.eye(3, dtype=np.float32)
+    parts = []
+    for node in scene.graph.nodes_geometry:
+        T, geom_name = scene.graph[node]
+        m = scene.geometry[geom_name]
+        if not isinstance(m, trimesh.Trimesh) or len(m.faces) == 0:
+            continue
+        verts = (trimesh.transform_points(m.vertices, T) @ R.T).astype(np.float32)
+        normals = (m.vertex_normals @ np.asarray(T)[:3, :3].T @ R.T).astype(np.float32)
+        normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
+        f = m.faces.ravel()
+        vis = m.visual
+        uv = getattr(vis, "uv", None)
+        mat = getattr(vis, "material", None)
+        color, texture = (1.0, 1.0, 1.0, 1.0), None
+        if mat is not None:
+            factor = getattr(mat, "baseColorFactor", None)
+            if factor is None and getattr(mat, "diffuse", None) is not None:
+                factor = mat.diffuse
+            if factor is not None:
+                factor = np.asarray(factor, float) / (255.0 if np.asarray(factor).dtype.kind in "ui" else 1.0)
+                color = (*_srgb(factor[:3]), float(factor[3]) if len(factor) > 3 else 1.0)
+            tex = getattr(mat, "baseColorTexture", None) or getattr(mat, "image", None)
+            if tex is not None and uv is not None:
+                texture = np.asarray(tex.convert("RGBA"), np.uint8)
+        elif getattr(vis, "kind", None) == "face" or getattr(vis, "kind", None) == "vertex":
+            rgba = np.asarray(vis.main_color, float) / 255.0
+            color = (*rgba[:3], rgba[3])
+        mesh = Mesh(verts[f], normals[f], None if texture is None else np.asarray(uv, np.float32)[f])
+        parts.append(Part(mesh, color, texture))
+    if not parts:
+        raise ValueError(f"no meshes in {path}")
+    return parts
 
 
 def from_spec(spec: dict) -> Mesh:
