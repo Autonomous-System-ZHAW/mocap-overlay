@@ -105,6 +105,11 @@ class ViconStream:
             return None
         return interpolate_pose(T0, T1, (t - s0.t_host) / (s1.t_host - s0.t_host))
 
+    def track(self, subject: str, t_from: float, t_to: float) -> list[tuple[float, np.ndarray | None]]:
+        """Buffered (t_host, T_world_subject or None) of one subject between two host times."""
+        with self._lock:
+            return [(s.t_host, s.poses.get(subject)) for s in self.buffer if t_from <= s.t_host <= t_to]
+
     def subscribe(self, maxsize: int = 5000) -> Subscription:
         """Queue with every sample, e.g. for recording."""
         sub = Subscription(maxsize)

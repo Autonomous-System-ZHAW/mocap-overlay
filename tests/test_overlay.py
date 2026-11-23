@@ -107,3 +107,56 @@ def test_vicon_stream_pose_at_interpolates_buffer():
     assert vs.pose_at("car", 99.0) is None  # before the buffer
     np.testing.assert_allclose(vs.pose_at("car", 100.05)[:3, 3], [0.09, 0, 0])  # just after the newest: hold
     assert vs.nearest(100.0124).frame_number == 2
+
+
+class FixedPoses:
+    """Pose source stand-in: one subject at a fixed pose, status switchable."""
+
+    def __init__(self, T, ok=True):
+        self.T, self.ok = T, ok
+
+    def pose_at(self, subject, t):
+        return self.T
+
+    def trail(self, subject, t, seconds, offset):
+        return [np.array([[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]], float)]
+
+    def status(self):
+        return self.ok, "fake"
+
+
+def _live_run(gl, tmp_path, poses, n=8):
+    import cv2
+
+    from pipeline.live import LiveOptions, LiveOverlay, LiveState
+    from record.camera_stream import CameraStream
+
+    video = tmp_path / "v.avi"
+    w = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"MJPG"), 25, SIZE)
+    for _ in range(30):
+        w.write(np.full((SIZE[1], SIZE[0], 3), 90, np.uint8))
+    w.release()
+    scene_file = tmp_path / "s.yaml"
+    scene_file.write_text("objects: [{attach: car, mesh: {type: box, size: [0.4, 0.4, 0.4]}, color: '#ff0000'}]\n"
+                          "trails: [{subject: car, color: '#00ff00'}]\n")
+    cam = Camera("pinhole", SIZE, K, np.zeros(5), look_at(np.array([0.0, -3.0, 2.0]), np.array([0.0, 0.0, 0.0])))
+    outputs = []
+    camera = CameraStream({"rtsp_url": ""}, str(video))
+    live = LiveOverlay(camera, poses, lambda f: f.t_host, Scene.from_yaml(scene_file), cam,
+                       LiveOptions(show_window=False, max_frames=n), on_frame=lambda out, t: outputs.append(out))
+    with camera:
+        live.run()
+    assert live.state == LiveState.STOPPED and len(outputs) == n
+    return outputs, live
+
+
+def test_live_overlay_draws_scene(gl, tmp_path):
+    outputs, live = _live_run(gl, tmp_path, FixedPoses(make_T(np.eye(3), [0, 0, 0])))
+    out = outputs[-1].astype(int)
+    assert ((out[..., 2] > 150) & (out[..., 1] < 80)).sum() > 500  # red box (BGR)
+    assert ((out[..., 1] > 200) & (out[..., 2] < 100)).sum() > 50  # green trail
+
+
+def test_live_overlay_passes_video_through_without_poses(gl, tmp_path):
+    outputs, live = _live_run(gl, tmp_path, FixedPoses(make_T(np.eye(3), [0, 0, 0]), ok=False))
+    assert all(abs(int(o.mean()) - 90) <= 2 for o in outputs)  # plain video, no overlay

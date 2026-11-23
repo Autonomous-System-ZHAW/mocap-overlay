@@ -80,6 +80,15 @@ path, stream profile or the machine changes.
 **Live check** (`scripts/check_extrinsics.py`) applies the measured camera delay: each frame is
 drawn with the Vicon data from its exposure time. Press D to toggle the correction.
 
+**Live view** of a scene on the camera stream (camera + Vicon, newest calibration and delay):
+```bash
+uv run python scripts/live_overlay.py --scene config/scenes/demo_street.yaml
+uv run python scripts/live_overlay.py --replay data/recordings/<ts>   # recording played back as if live
+```
+Keys: Q quit, D delay correction, O overlay, H info, F fullscreen, S snapshot. If Vicon drops out,
+the video keeps running without overlay. Streaming output (NDI, virtual webcam, ...) is planned,
+see [docs/future_improvements.md](docs/future_improvements.md).
+
 **Offline render** of a scene onto a recording:
 ```bash
 uv run python scripts/render_offline.py data/recordings/<ts> --scene config/scenes/demo_street.yaml
