@@ -160,3 +160,29 @@ def test_live_overlay_draws_scene(gl, tmp_path):
 def test_live_overlay_passes_video_through_without_poses(gl, tmp_path):
     outputs, live = _live_run(gl, tmp_path, FixedPoses(make_T(np.eye(3), [0, 0, 0]), ok=False))
     assert all(abs(int(o.mean()) - 90) <= 2 for o in outputs)  # plain video, no overlay
+
+
+@pytest.mark.parametrize("model,dist", [("pinhole", np.array([-0.3, 0.1, 0, 0, -0.02])),
+                                        ("fisheye", np.array([-0.02, 0.03, -0.03, 0.01]))])
+def test_virtual_camera_maps_are_inverse(model, dist):
+    """real pixel -> virtual (distort map) -> real (undistort map) must return to the start."""
+    import cv2
+
+    from calib.virtual_camera import VirtualCamera
+
+    cam = Camera(model, SIZE, K, dist, np.eye(4))
+    vc = VirtualCamera.from_camera(cam)
+    ux, uy, size = vc.undistort_maps(cam, scale=1.0)
+    assert size[0] >= SIZE[0] and size[1] >= SIZE[1]  # overscan covers the real image
+    rng = np.random.default_rng(1)
+    pts = rng.uniform([50, 50], [SIZE[0] - 50, SIZE[1] - 50], (500, 2)).astype(np.float32)
+    # Skip real pixels without a unique undistortion (the strong test polynomial folds in the far
+    # corners; those pixels are marked invalid by design), including their interpolation neighbours.
+    valid = cv2.erode((vc.map_x >= 0).astype(np.uint8), np.ones((5, 5), np.uint8))
+    pts = pts[valid[pts[:, 1].astype(int), pts[:, 0].astype(int)] > 0]
+    assert len(pts) > 400
+    vx = cv2.remap(vc.map_x, pts[:, 0:1], pts[:, 1:2], cv2.INTER_LINEAR).ravel()
+    vy = cv2.remap(vc.map_y, pts[:, 0:1], pts[:, 1:2], cv2.INTER_LINEAR).ravel()
+    bx = cv2.remap(ux, vx[:, None], vy[:, None], cv2.INTER_LINEAR).ravel()
+    by = cv2.remap(uy, vx[:, None], vy[:, None], cv2.INTER_LINEAR).ravel()
+    assert np.abs(np.column_stack([bx, by]) - pts).max() < 0.1

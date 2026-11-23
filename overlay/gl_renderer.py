@@ -17,7 +17,7 @@ import moderngl
 import numpy as np
 
 from calib.camera import Camera
-from calib.intrinsics import project_points, undistort_points
+from calib.virtual_camera import VirtualCamera
 from overlay.meshes import Mesh
 
 VERTEX_SHADER = """
@@ -96,28 +96,10 @@ class GLRenderer:
         self.cam = cam
         self.light_dir = np.asarray(light_dir, float)
         self.ambient, self.shadow_alpha = ambient, shadow_alpha
-        w, h = cam.image_size
-
-        # Normalised coordinates of every real pixel -> extent of the virtual pinhole image.
-        u, v = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
-        pix = np.column_stack([u.ravel(), v.ravel()])
-        norm = undistort_points(cam.model, pix, cam.K, cam.dist)
-        # The iterative undistortion can fail at the edge of the calibrated field of view: keep only
-        # pixels that project back onto themselves; the rest stay transparent.
-        back = project_points(cam.model, np.column_stack([norm, np.ones(len(norm))]), np.zeros(3), np.zeros(3),
-                              cam.K, cam.dist)
-        limit = np.tan(np.radians(max_half_angle_deg))
-        valid = (np.linalg.norm(back - pix, axis=1) < 1.0) & (np.abs(norm) < limit).all(axis=1)
-        self.invalid_fraction = float(1 - valid.mean())
-        lo, hi = norm[valid].min(axis=0), norm[valid].max(axis=0)
-        f = float(np.mean([cam.K[0, 0], cam.K[1, 1]])) * render_scale
-        self.virtual_size = (int(np.ceil((hi[0] - lo[0]) * f)) + 2, int(np.ceil((hi[1] - lo[1]) * f)) + 2)
-        self.K_virtual = np.array([[f, 0, -lo[0] * f + 1], [0, f, -lo[1] * f + 1], [0, 0, 1]])
-        mx = norm[:, 0] * f + self.K_virtual[0, 2]
-        my = norm[:, 1] * f + self.K_virtual[1, 2]
-        mx[~valid], my[~valid] = -1, -1  # outside the virtual image -> border value (transparent)
-        self.map_x = mx.reshape(h, w).astype(np.float32)
-        self.map_y = my.reshape(h, w).astype(np.float32)
+        self.virtual = VirtualCamera.from_camera(cam, render_scale, max_half_angle_deg)
+        self.virtual_size, self.K_virtual = self.virtual.size, self.virtual.K
+        self.map_x, self.map_y = self.virtual.map_x, self.virtual.map_y
+        self.invalid_fraction = self.virtual.invalid_fraction
 
         self.ctx = moderngl.create_standalone_context(backend="egl")
         self.prog = self.ctx.program(vertex_shader=VERTEX_SHADER, fragment_shader=FRAGMENT_SHADER)

@@ -3,6 +3,8 @@
 Calibrate the lab Axis camera to the Vicon system and overlay Vicon data on the video.
 See [CLAUDE.md](CLAUDE.md) for the full plan and conventions, [docs/future_improvements.md](docs/future_improvements.md) for open ideas.
 
+**Quick start:** [docs/cheatsheet.md](docs/cheatsheet.md) (tool) · [docs/blender_cheatsheet.md](docs/blender_cheatsheet.md) (Blender)
+
 ## Setup
 
 ```bash
@@ -100,3 +102,21 @@ remapped onto the real lens distortion (`overlay/gl_renderer.py`).
 
 Virtual objects are always drawn over untracked real objects (people, furniture); only Vicon
 subjects can hide them (holdouts). Place scenes on free floor.
+
+## Blender
+
+```bash
+uv run python scripts/blender_setup.py data/recordings/<ts>
+```
+Opens Blender with `data/blender/<recording>/mocap_scene.blend`: the calibrated camera with the
+camera video (undistorted) as background, one Empty per Vicon subject animated with the
+recorded poses (camera delay applied; Blender frame 1 = video frame 0), sun, Vicon origin and a
+floor shadow catcher. Model in the `models` collection: static objects in the Vicon world,
+moving objects parented to a subject Empty. Later runs open the existing file (your work is
+never overwritten; `--rebuild` makes a fresh one and keeps a backup).
+
+Render scene **`output`** for final results: its compositor renders scene `mocap`, applies the
+real lens distortion (Map UV) and puts the CG over the original video at 1920x1080; switch
+node off = CG only with transparent background. `blender -b mocap_scene.blend -S output -a`.
+EEVEE by default; after changing the light, run the text block `calibrate_shadow_catcher.py`.
+Details: the `README_mocap` text block inside the .blend.
