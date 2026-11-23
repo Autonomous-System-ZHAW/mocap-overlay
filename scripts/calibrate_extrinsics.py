@@ -18,12 +18,17 @@ from calib.transforms import inv_T
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("session", help="session folder from capture_static_poses.py")
+    p.add_argument("session", nargs="?", help="session folder from capture_static_poses.py (default: newest)")
     p.add_argument("--camera", default="config/camera.yaml")
     p.add_argument("--intrinsics", help="override the intrinsics recorded in the session")
     p.add_argument("-o", "--out", help="output YAML (default data/extrinsics/extrinsics_<date>.yaml)")
     a = p.parse_args()
 
+    if a.session is None:
+        sessions = [d for d in Path("data/extrinsics").glob("*/") if any(d.glob("pose_*.npz"))]
+        if not sessions:
+            raise SystemExit("no session with poses in data/extrinsics, run capture_static_poses.py first")
+        a.session = str(max(sessions, key=lambda d: d.name))  # folder names are timestamps
     meta, poses = load_static_session(a.session)
     board_cfg = BoardConfig(**meta["board"])
     intr_path = Path(a.intrinsics or meta["intrinsics_file"])
