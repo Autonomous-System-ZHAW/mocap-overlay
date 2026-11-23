@@ -14,7 +14,7 @@ import cv2
 from calib.board import BoardConfig, detect, effective_min_corners, make_detector
 from calib.intrinsics import coverage
 from calib.io import load_yaml
-from record.stream import capture
+from record.camera_stream import CameraStream, State as CameraState
 
 
 def main() -> None:
@@ -37,12 +37,16 @@ def main() -> None:
 
 
     history = []  # detections of saved frames
-    with capture(cam, a.source) as cap:
+    with CameraStream(cam, a.source) as camera:
         while True:
-            ok, frame = cap.read()
-            if not ok:
-                print("stream ended or dropped")
-                break
+            grabbed = camera.read(timeout=1.0)
+            if grabbed is None:
+                if camera.state == CameraState.STOPPED:
+                    print(f"camera stopped: {camera.last_error}")
+                    break
+                cv2.waitKey(1)  # keep the window responsive while reconnecting
+                continue
+            frame = grabbed.image
             det = detect(detector, frame)
             view = frame.copy()
             for d in history:

@@ -26,7 +26,9 @@ MM_TO_M = 1e-3
 
 
 def _struct(name: str, fields: list) -> type:
-    return type(name, (C.Structure,), {"_pack_": 1, "_fields_": [("Result", C.c_int), *fields]})
+    # #pragma pack(1): no padding. ctypes only supports _pack_ with the "ms" layout, which is
+    # identical to GCC for these flat int/double structs (sizes checked against CTypeDefs.h).
+    return type(name, (C.Structure,), {"_pack_": 1, "_layout_": "ms", "_fields_": [("Result", C.c_int), *fields]})
 
 
 OutUInt = _struct("OutUInt", [("Value", C.c_uint)])  # FrameNumber, SubjectCount, MarkerCount, ...

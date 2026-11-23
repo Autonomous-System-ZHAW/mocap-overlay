@@ -23,7 +23,7 @@ from calib.board import BoardConfig
 from calib.camera import Camera
 from calib.io import load_yaml
 from overlay import draw
-from record.stream import capture
+from record.camera_stream import CameraStream, State as CameraState
 from record.vicon_stream import ViconStream
 
 
@@ -59,12 +59,16 @@ def main() -> None:
                         with_markers=True)
     show_grid = True
 
-    with vicon, capture(cam_cfg, a.source) as cap:
+    with vicon, CameraStream(cam_cfg, a.source) as camera:
         while True:
-            ok, frame = cap.read()
-            if not ok:
-                print("stream ended or dropped")
-                break
+            grabbed = camera.read(timeout=1.0)
+            if grabbed is None:
+                if camera.state == CameraState.STOPPED:
+                    print(f"camera stopped: {camera.last_error}")
+                    break
+                cv2.waitKey(1)  # keep the window responsive while reconnecting
+                continue
+            frame = grabbed.image
             view = frame.copy()
             if show_grid:
                 draw.floor_grid(view, cam, a.grid[:2], a.grid[2:], a.grid_step)

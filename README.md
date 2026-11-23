@@ -44,3 +44,33 @@ Check the connection (Tracker running, host in `config/vicon.yaml` reachable):
    → `data/extrinsics/extrinsics_<date>.yaml` (contains intrinsics too). Target RMS ~0.5–1 px.
 4. Validate live: `uv run python scripts/check_extrinsics.py`. Vicon markers (yellow) must sit on the
    real markers and the predicted board (cyan) on the printed board, everywhere in the image.
+
+## Recording (camera + Vicon)
+
+```bash
+uv run python scripts/record_session.py --note "first drive"            # Q / Ctrl+C to stop
+uv run python scripts/record_session.py --no-preview --duration 60       # headless, e.g. over SSH
+```
+→ `data/recordings/<timestamp>/`: `video.mkv` (H.264), `frames.csv` (one row per video frame),
+`vicon_poses.csv`, optional `markers.csv` (`--markers`), `meta.yaml`, and a copy of the calibration.
+Every CSV starts with `t_host` (this machine's clock), so further sources (e.g. ROS 2 topics) can be
+added as more CSVs. The camera delay is not removed yet; that is the time sync step.
+
+Load in Python: `Recording("data/recordings/<ts>")` → `.frames`, `.iter_frames()`,
+`.pose_at(subject, times)` (interpolated, invalid across occlusions and gaps).
+
+All camera scripts read through a background grabber (`record/camera_stream.py`), so they no
+longer lag behind the stream. `--source <video file>` plays a recording back in real time as if it
+were the camera, handy for developing without the lab.
+
+## Time sync (camera delay)
+
+Record ~30 s while moving the ChArUco board (tracked by Vicon) at moderate speed in front of the camera:
+```bash
+uv run python scripts/record_session.py --duration 30 --note "delay board"
+uv run python scripts/estimate_time_offset.py            # newest recording with the board tracked
+```
+→ `data/time_sync/time_sync_<date>.yaml` with `delay_s`: a frame stamped `t` (arrival on this
+machine) was exposed at `t - delay_s`. Also writes `time_sync_check.jpg` into the recording
+(red: corners predicted without the correction, green: with). Re-measure whenever the network
+path, stream profile or the machine changes.

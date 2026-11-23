@@ -14,6 +14,7 @@ from enum import Enum
 
 import numpy as np
 
+from record.subscription import Subscription
 from record.vicon_client import ViconClient, ViconError
 
 
@@ -29,6 +30,8 @@ class State(Enum):
 class ViconSample:
     t_host: float  # time.time() of the exposure (receive time - latency)
     frame_number: int
+    t_recv: float = 0.0  # time.time() when the SDK delivered the frame
+    latency_s: float = 0.0  # SDK-reported latency (exposure -> delivery)
     poses: dict[str, np.ndarray | None] = field(default_factory=dict)  # subject -> T_world_subject, None if occluded
     markers: np.ndarray | None = None  # (N, 3) all visible markers (labelled + unlabelled) [m], if enabled
 
@@ -44,6 +47,7 @@ class ViconStream:
         self.last_error = ""
         self.frame_rate = 0.0
         self._lock = threading.Lock()
+        self._subs: list[Subscription] = []
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -71,6 +75,17 @@ class ViconStream:
     def window(self, t_from: float, t_to: float) -> list[ViconSample]:
         with self._lock:
             return [s for s in self.buffer if t_from <= s.t_host <= t_to]
+
+    def subscribe(self, maxsize: int = 5000) -> Subscription:
+        """Queue with every sample, e.g. for recording."""
+        sub = Subscription(maxsize)
+        with self._lock:
+            self._subs.append(sub)
+        return sub
+
+    def unsubscribe(self, sub: Subscription) -> None:
+        with self._lock:
+            self._subs.remove(sub)
 
     def wait_streaming(self, timeout: float = 10.0) -> bool:
         end = time.monotonic() + timeout
@@ -119,7 +134,9 @@ class ViconStream:
     def _read_frame(self, client: ViconClient) -> None:
         client.get_frame()
         t_recv = time.time()
-        sample = ViconSample(t_host=t_recv - client.latency_s(), frame_number=client.frame_number())
+        latency = client.latency_s()
+        sample = ViconSample(t_host=t_recv - latency, frame_number=client.frame_number(), t_recv=t_recv,
+                             latency_s=latency)
         for subject in self.subjects:
             try:
                 pose = client.segment_pose(subject)
@@ -136,3 +153,6 @@ class ViconStream:
             sample.markers = np.vstack(pts)
         with self._lock:
             self.buffer.append(sample)
+            subs = list(self._subs)
+        for sub in subs:
+            sub.put(sample)

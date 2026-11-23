@@ -22,7 +22,7 @@ from calib.board import BoardConfig, detect, make_detector
 from calib.intrinsics import undistort_maps
 from calib.pose import board_pose
 from calib.io import load_intrinsics, load_yaml
-from record.stream import capture
+from record.camera_stream import CameraStream, State as CameraState
 
 RESIDUAL_GAIN = 20
 
@@ -63,12 +63,16 @@ def main() -> None:
     m1, m2, _ = undistort_maps(model, K, dist, size, alpha)
     snap_dir = Path("data/intrinsics/check")
 
-    with capture(cam, a.source) as cap:
+    with CameraStream(cam, a.source) as camera:
         while True:
-            ok, frame = cap.read()
-            if not ok:
-                print("stream ended or dropped")
-                break
+            grabbed = camera.read(timeout=1.0)
+            if grabbed is None:
+                if camera.state == CameraState.STOPPED:
+                    print(f"camera stopped: {camera.last_error}")
+                    break
+                cv2.waitKey(1)  # keep the window responsive while reconnecting
+                continue
+            frame = grabbed.image
             if (frame.shape[1], frame.shape[0]) != size:
                 raise SystemExit(f"frame is {frame.shape[1]}x{frame.shape[0]}, calibration is {size[0]}x{size[1]}")
 

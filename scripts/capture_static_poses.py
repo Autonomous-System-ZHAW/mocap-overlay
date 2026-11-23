@@ -24,7 +24,7 @@ from calib.board import BoardConfig, Detection, detect, effective_min_corners, m
 from calib.io import load_intrinsics, load_yaml, save_session_meta, save_static_pose
 from calib.pose import board_pose
 from calib.transforms import average_poses
-from record.stream import capture
+from record.camera_stream import CameraStream, State as CameraState
 from record.vicon_stream import State as ViconState
 from record.vicon_stream import ViconStream
 
@@ -129,13 +129,17 @@ def main() -> None:
     vicon = ViconStream(vicon_cfg["host"], vicon_cfg["sdk_dir"], [subject], vicon_cfg.get("stream_mode", "ServerPush"))
     mode, t_mode, dets, msg, msg_color = Mode.LIVE, 0.0, [], "", (255, 255, 255)
 
-    with vicon, capture(cam_cfg, a.source) as cap:
+    with vicon, CameraStream(cam_cfg, a.source) as camera:
         while True:
-            ok, frame = cap.read()
-            if not ok:
-                print("stream ended or dropped")
-                break
-            now = time.time()
+            grabbed = camera.read(timeout=1.0)
+            if grabbed is None:
+                if camera.state == CameraState.STOPPED:
+                    print(f"camera stopped: {camera.last_error}")
+                    break
+                cv2.waitKey(1)  # keep the window responsive while reconnecting
+                continue
+            frame = grabbed.image
+            now = grabbed.t_host
             if (frame.shape[1], frame.shape[0]) != size:
                 raise SystemExit(f"frame is {frame.shape[1]}x{frame.shape[0]}, intrinsics are {size[0]}x{size[1]}")
             det = detect(detector, frame)

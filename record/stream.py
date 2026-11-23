@@ -1,51 +1,41 @@
-"""Open the camera stream (RTSP URL from camera.yaml, device index or video file)."""
+"""Resolve and open video sources (RTSP URL from camera.yaml, device index or video file)."""
 
 import os
 import re
-import time
-from contextlib import contextmanager
 
 import cv2
 
+# FFmpeg options for RTSP: TCP avoids broken frames from lost UDP packets; no input buffering.
+RTSP_FFMPEG_OPTIONS = "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay"
 
-def redact(url: str) -> str:
+
+def redact(url) -> str:
     """Hide user:password in a URL for printing."""
     return re.sub(r"//[^/@]*@", "//***@", str(url))
 
 
-def open_capture(camera_cfg: dict, override: str | None = None, retry_s: float = 90.0) -> cv2.VideoCapture:
-    """Open `override` if given, else the camera's rtsp_url with ${ENV} credentials expanded.
-
-    Retries for `retry_s` seconds: after an unclean exit the Axis keeps the old RTSP
-    session until its timeout and answers 503 in the meantime.
-    """
+def resolve_source(camera_cfg: dict, override: str | None = None) -> str | int:
+    """`override` if given, else the camera's rtsp_url with ${ENV} credentials expanded."""
     source = override or os.path.expandvars(camera_cfg["rtsp_url"])
     if "${" in str(source):
         raise SystemExit(f"unexpanded variable in stream URL, set the env vars: {source}")
-    source = int(source) if str(source).isdigit() else source
-    is_stream = isinstance(source, str) and "://" in source
+    return int(source) if str(source).isdigit() else source
 
-    deadline = time.monotonic() + (retry_s if is_stream else 0)
-    while True:
-        cap = cv2.VideoCapture(source)
-        if cap.isOpened():
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # keep latency low on RTSP
-            return cap
+
+def is_network_stream(source) -> bool:
+    return isinstance(source, str) and "://" in source
+
+
+def is_file(source) -> bool:
+    return isinstance(source, str) and not is_network_stream(source)
+
+
+def try_open(source) -> cv2.VideoCapture | None:
+    """Open a source once. Returns None on failure (e.g. 503 while the camera still holds an old session)."""
+    if is_network_stream(source):
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = RTSP_FFMPEG_OPTIONS
+    cap = cv2.VideoCapture(source)
+    if not cap.isOpened():
         cap.release()
-        if time.monotonic() >= deadline:
-            raise SystemExit(f"cannot open {redact(source)}")
-        print(f"cannot open {redact(source)}, retrying in 5 s (old session may still be held by the camera)")
-        time.sleep(5)
-
-
-@contextmanager
-def capture(camera_cfg: dict, override: str | None = None):
-    """Open the stream and always release it, also on Ctrl+C, so the camera gets a TEARDOWN."""
-    cap = open_capture(camera_cfg, override)
-    try:
-        yield cap
-    except KeyboardInterrupt:
-        print("interrupted")
-    finally:
-        cap.release()
-        cv2.destroyAllWindows()
+        return None
+    return cap
