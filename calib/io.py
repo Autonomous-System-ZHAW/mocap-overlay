@@ -100,3 +100,14 @@ def save_extrinsics(path: str | Path, res, intrinsics_path: str | Path, camera: 
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         yaml.safe_dump(data, f, sort_keys=False, default_flow_style=None)
+
+
+def load_vicon_config(path: str | Path) -> dict:
+    """config/vicon.yaml with ${ENV} variables in `host` expanded (e.g. host: ${VICON_HOST}:801)."""
+    import os
+
+    cfg = load_yaml(path)
+    cfg["host"] = os.path.expandvars(str(cfg["host"]))
+    if "$" in cfg["host"]:
+        raise SystemExit(f"Vicon host not set: {cfg['host']} (e.g. export VICON_HOST=<vicon pc name or IP>)")
+    return cfg

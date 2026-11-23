@@ -1,5 +1,5 @@
-# Vicon DataStream (Tracker 3.10)
-host: clt-lab-t-5059.zhaw.ch:801
+# Vicon DataStream (Tracker 3.10). Host from the VICON_HOST environment variable.
+host: ${VICON_HOST}:801            # set VICON_HOST (Vicon PC name or IP) in your environment
 sdk_dir: third_party/vicon_sdk   # libViconDataStreamSDK_C.so + _CPP.so (not in git)
 stream_mode: ServerPush          # ClientPull | ClientPullPreFetch | ServerPush
 

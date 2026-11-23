@@ -25,7 +25,7 @@ import numpy as np
 
 from calib.board import BoardConfig
 from calib.camera import Camera
-from calib.io import load_yaml
+from calib.io import load_yaml, load_vicon_config
 from calib.time_sync import load_delay
 from overlay import draw
 from record.camera_stream import CameraStream, State as CameraState
@@ -63,7 +63,7 @@ def main() -> None:
         delay, sync_path = a.delay, "--delay"
     print(f"camera delay {delay * 1000:.0f} ms ({sync_path or 'not measured, run estimate_time_offset.py'})")
 
-    cam_cfg, vicon_cfg = load_yaml(a.camera), load_yaml(a.vicon)
+    cam_cfg, vicon_cfg = load_yaml(a.camera), load_vicon_config(a.vicon)
     board_subject = vicon_cfg["subjects"]["board"]
     subjects = list(dict.fromkeys(vicon_cfg["subjects"].values()))
     vicon = ViconStream(vicon_cfg["host"], vicon_cfg["sdk_dir"], subjects, vicon_cfg.get("stream_mode", "ServerPush"),

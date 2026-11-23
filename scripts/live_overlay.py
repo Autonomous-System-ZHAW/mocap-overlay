@@ -15,7 +15,7 @@ import argparse
 from pathlib import Path
 
 from calib.camera import Camera
-from calib.io import load_yaml
+from calib.io import load_yaml, load_vicon_config
 from calib.time_sync import load_delay
 from overlay.scene import Scene
 from pipeline.live import LiveOptions, LiveOverlay
@@ -63,7 +63,7 @@ def main() -> None:
     else:
         calib = Path(a.calibration) if a.calibration else newest("data/extrinsics", "extrinsics_*.yaml")
         camera = CameraStream(load_yaml(a.camera), a.source)
-        vcfg = load_yaml(a.vicon)
+        vcfg = load_vicon_config(a.vicon)
         trail_s = max([t.seconds for t in scene.trails], default=0.0)
         vicon = ViconStream(vcfg["host"], vcfg["sdk_dir"], sorted(scene.subjects), vcfg.get("stream_mode", "ServerPush"),
                             buffer_s=max(10.0, delay + trail_s + 2.0))

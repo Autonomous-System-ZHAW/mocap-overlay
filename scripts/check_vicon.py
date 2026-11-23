@@ -9,7 +9,7 @@ import time
 
 import numpy as np
 
-from calib.io import load_yaml
+from calib.io import load_vicon_config
 from record.vicon_client import ViconClient, ViconError, quat_to_matrix
 
 
@@ -20,7 +20,7 @@ def main() -> None:
     p.add_argument("--seconds", type=float, default=3.0)
     a = p.parse_args()
 
-    cfg = load_yaml(a.vicon)
+    cfg = load_vicon_config(a.vicon)
     subject = a.subject or cfg["subjects"]["board"]
 
     with ViconClient(cfg["sdk_dir"]) as client:

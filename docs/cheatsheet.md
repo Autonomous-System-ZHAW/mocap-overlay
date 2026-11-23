@@ -1,7 +1,7 @@
 # Cheatsheet: mocap-overlay
 
 All commands: `uv run python scripts/<name>.py`, run from the repo root. `--help` on every script.
-Camera login: `export AXIS_USER=... AXIS_PASS=...`
+Environment: `export AXIS_USER=... AXIS_PASS=... VICON_HOST=<vicon pc>` (camera login, Vicon PC name or IP)
 
 ## One-time setup (per camera position)
 

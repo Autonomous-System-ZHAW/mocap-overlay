@@ -13,7 +13,7 @@ from pathlib import Path
 
 import cv2
 
-from calib.io import load_yaml
+from calib.io import load_yaml, load_vicon_config
 from record.camera_stream import CameraStream
 from record.recorder import Recorder, RecState
 from record.vicon_stream import ViconStream
@@ -56,7 +56,7 @@ def main() -> None:
 
     vicon = None
     if not a.no_vicon:
-        vcfg = load_yaml(a.vicon)
+        vcfg = load_vicon_config(a.vicon)
         subjects = a.subjects or list(dict.fromkeys(vcfg["subjects"].values()))
         vicon = ViconStream(vcfg["host"], vcfg["sdk_dir"], subjects, vcfg.get("stream_mode", "ServerPush"),
                             with_markers=a.markers)

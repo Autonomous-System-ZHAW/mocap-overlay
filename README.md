@@ -1,16 +1,53 @@
 # mocap-overlay
 
-Calibrate the lab Axis camera to the Vicon system and overlay Vicon data on the video.
-See [CLAUDE.md](CLAUDE.md) for the full plan and conventions, [docs/future_improvements.md](docs/future_improvements.md) for open ideas.
+**Augmented-reality overlays for motion-capture labs.** Calibrate a fixed IP camera to a Vicon
+motion capture system, then draw what Vicon tracks (poses, trajectories, 3D models, virtual
+worlds) into the camera video: live, or rendered offline in our renderer or in Blender.
 
-**Quick start:** [docs/cheatsheet.md](docs/cheatsheet.md) (tool) · [docs/blender_cheatsheet.md](docs/blender_cheatsheet.md) (Blender)
+Built at ZHAW for autonomous 1:10 RC cars, but nothing is car-specific: any Vicon object works.
 
-## Setup
+```
+camera (RTSP) ─┐                          ┌─► live view (OpenGL, 25 fps)
+               ├─► calibration ─► sync ───┼─► offline video (MP4)
+Vicon ─────────┘                          └─► Blender scene (model, preview, render)
+```
+
+## Features
+
+- **Camera calibration** with ChArUco boards: intrinsics (pinhole, rational, fisheye) and the
+  camera pose in the Vicon world via robot-world hand-eye calibration, with live checks.
+- **Time sync**: measures the camera delay from a moving board, so overlays stay on moving objects.
+- **Recorder**: camera video + Vicon poses on one clock, replayable as if live.
+- **Live overlay**: 3D scenes rendered with the real lens distortion, shadows on the real floor,
+  holdouts for real objects.
+- **Blender workflow**: opens a recording in Blender with the calibrated camera and the Vicon
+  motion as keyframes; render there (lens distortion in the compositor) or export the models
+  for the live view.
+- No Vicon Python package needed (small ctypes binding to the DataStream SDK).
+
+## Requirements
+
+- Linux, Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/), ffmpeg, a GPU with EGL (NVIDIA tested)
+- Fixed IP camera with RTSP (tested: Axis, 1920x1080, 25 fps)
+- Vicon system with the DataStream SDK (Tracker 3.10 tested); SDK binaries from Vicon, not included
+- A printed ChArUco board with Vicon markers on it
+- Optional: Blender ≥ 4.2 (4.5 tested)
+
+## Quick start
 
 ```bash
-uv sync
-uv run pytest
+uv sync && uv run pytest
 ```
+Then follow [docs/cheatsheet.md](docs/cheatsheet.md) (calibration → recording → overlays) and
+[docs/blender_cheatsheet.md](docs/blender_cheatsheet.md). Open ideas:
+[docs/future_improvements.md](docs/future_improvements.md). Design notes and conventions:
+[CLAUDE.md](CLAUDE.md).
+
+Status: **v0.1.0**, first working version, used in one lab. Expect rough edges.
+
+---
+
+# Detailed guide
 
 ## Vicon DataStream SDK
 
@@ -19,7 +56,7 @@ The SDK binaries are not in git (Vicon licence). From the SDK download
 `libViconDataStreamSDK_CPP.so` to `third_party/vicon_sdk/`. Python talks to them through a small
 ctypes binding (`record/vicon_client.py`), no Vicon Python package needed.
 
-Check the connection (Tracker running, host in `config/vicon.yaml` reachable):
+Set the Vicon PC (name or IP) with `export VICON_HOST=...`, then check the connection (Tracker running):
 `uv run python scripts/check_vicon.py`
 
 ## Step 1: intrinsics
@@ -127,3 +164,8 @@ uv run python scripts/blender_export.py data/blender/<recording> --name my_stree
 ```
 → `assets/my_street/` (`world.glb` static, `<subject>.glb` per Vicon object, `holdouts_*.glb`) and
 `config/scenes/my_street.yaml`. Supported: meshes, base colour, image textures, transparency.
+
+## License
+
+[MIT](LICENSE). The Vicon DataStream SDK is not part of this repository and has its own licence
+from Vicon.

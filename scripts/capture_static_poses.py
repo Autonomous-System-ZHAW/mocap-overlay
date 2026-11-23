@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 from calib.board import BoardConfig, Detection, detect, effective_min_corners, make_detector
-from calib.io import load_intrinsics, load_yaml, save_session_meta, save_static_pose
+from calib.io import load_intrinsics, load_yaml, save_session_meta, save_static_pose, load_vicon_config
 from calib.pose import board_pose
 from calib.transforms import average_poses
 from record.camera_stream import CameraStream, State as CameraState
@@ -106,7 +106,7 @@ def main() -> None:
     p.add_argument("--max-rot-deg", type=float, default=0.15, help="max Vicon rotation deviation [deg]")
     a = p.parse_args()
 
-    cam_cfg, vicon_cfg = load_yaml(a.camera), load_yaml(a.vicon)
+    cam_cfg, vicon_cfg = load_yaml(a.camera), load_vicon_config(a.vicon)
     board_cfg = BoardConfig.from_yaml(a.board)
     board = board_cfg.build()
     detector = make_detector(board)
